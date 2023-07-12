@@ -1,0 +1,10 @@
+[package]
+name = "bytemuck_parsing"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+readme = "readme.md"
+description = "Helpers for parsing with bytemuck and core."
+
+[dependencies]
+bytemuck = "1.13"
