@@ -1,3 +1,3 @@
 # bytemuck_parsing
 
-Helpers for parsing with bytemuck and core.
+Helpers to parse plain-old-data with `bytemuck` and `core`

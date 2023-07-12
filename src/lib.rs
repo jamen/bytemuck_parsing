@@ -1,5 +1,13 @@
+#![no_std]
+
 use bytemuck::{AnyBitPattern, PodCastError};
-use core::mem::size_of;
+use core::str::Utf8Error;
+use core::{marker::PhantomData, mem::size_of};
+use derive_more::{Display, From};
+
+#[derive(Debug, Display, PartialEq, Eq, Copy, Clone)]
+#[display(fmt = "input ended unexpectedly")]
+pub struct InputEndedError;
 
 /// Removes and returns items from the beginning of a slice.
 ///
@@ -13,19 +21,62 @@ use core::mem::size_of;
 ///
 /// let mut i = b"Hello world".as_slice();
 /// let o = take(&mut i, 5);
-/// assert_eq!(o, Some(b"Hello".as_slice()));
+/// assert_eq!(o, Ok(b"Hello".as_slice()));
 /// assert_eq!(i, b" world".as_slice());
 /// ```
-pub fn take<'a, T>(input: &mut &'a [T], n: usize) -> Option<&'a [T]> {
+pub fn take<'a, T>(input: &mut &'a [T], n: usize) -> Result<&'a [T], InputEndedError> {
     if n > input.len() {
-        return None;
+        return Err(InputEndedError);
     }
     let (front, back) = input.split_at(n);
     *input = back;
-    Some(front)
+    Ok(front)
 }
 
-/// Parse a plain-old-data type. See [`bytemuck::Pod`] for more details on plain-old-data types.
+#[derive(Display, Debug, From, Copy, Clone, PartialEq, Eq)]
+pub enum TakeStrWithLenError {
+    InputEnded(InputEndedError),
+    Utf8(Utf8Error),
+}
+
+/// Removes and returns a UTF-8 string from the beginning of a byte slice.
+///
+/// ```rust
+/// use bytemuck_parsing::take_str_with_len;
+///
+/// let mut i = b"Hello world".as_slice();
+/// let o = take_str_with_len(&mut i, 5);
+/// assert_eq!(o, Ok("Hello"));
+/// assert_eq!(i, b" world".as_slice());
+/// ```
+pub fn take_str_with_len<'a>(
+    input: &mut &'a [u8],
+    len: usize,
+) -> Result<&'a str, TakeStrWithLenError> {
+    let bytes = take(input, len)?;
+    let string = core::str::from_utf8(bytes)?;
+    Ok(string)
+}
+
+#[derive(Display, Debug, From, Copy, Clone, PartialEq, Eq)]
+pub enum ParseError {
+    InputEnded(InputEndedError),
+    PodCast(PodCastError),
+}
+
+impl<T> From<ParseIntError<T>> for ParseError {
+    fn from(x: ParseIntError<T>) -> Self {
+        x.into_inner()
+    }
+}
+
+impl<T> From<ParseFloatError<T>> for ParseError {
+    fn from(x: ParseFloatError<T>) -> Self {
+        x.into_inner()
+    }
+}
+
+/// Parse a plain-old-data type. See [`bytemuck::Pod`] for more details.
 ///
 /// # Examples
 ///
@@ -39,9 +90,31 @@ pub fn take<'a, T>(input: &mut &'a [T], n: usize) -> Option<&'a [T]> {
 /// assert_eq!(o, Ok([1, 0, 0, 0]));
 /// assert_eq!(i, [2, 2, 2, 2]);
 /// ```
-pub fn parse<T: AnyBitPattern>(input: &mut &[u8]) -> Result<T, PodCastError> {
-    let bytes = take(input, size_of::<T>()).ok_or(PodCastError::SizeMismatch)?;
-    Ok(bytemuck::try_pod_read_unaligned(bytes)?)
+pub fn parse<T: AnyBitPattern>(input: &mut &[u8]) -> Result<T, ParseError> {
+    let bytes = take(input, size_of::<T>())?;
+    let data_type = bytemuck::try_pod_read_unaligned(bytes)?;
+    Ok(data_type)
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub struct ParseIntError<T>(ParseError, PhantomData<T>);
+
+impl<T> ParseIntError<T> {
+    pub fn into_inner(self) -> ParseError {
+        self.0
+    }
+}
+
+impl<T> From<ParseError> for ParseIntError<T> {
+    fn from(x: ParseError) -> Self {
+        Self(x, Default::default())
+    }
+}
+
+impl<T> core::fmt::Display for ParseIntError<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.0.fmt(f)
+    }
 }
 
 macro_rules! impl_int_parsers {
@@ -53,8 +126,10 @@ macro_rules! impl_int_parsers {
     ) => {
         $(
             $(#[$fn_meta])*
-            $fn_vis fn $fn_name(input: &mut &[u8]) -> Result<$int_type, PodCastError> {
-                Ok($crate::parse::<$int_type>(input)?.$to_endian_fn())
+            $fn_vis fn $fn_name(input: &mut &[u8]) -> Result<$int_type, ParseIntError<$int_type>> {
+                let raw_int = $crate::parse::<$int_type>(input)?;
+                let specified_endianness_int = raw_int.$to_endian_fn();
+                Ok(specified_endianness_int)
             }
         )*
     };
@@ -264,4 +339,58 @@ impl_int_parsers! {
     /// assert_eq!(i, &[0x03, 0x7]);
     /// ```
     pub fn parse_i128_be { i128, to_be };
+}
+
+pub struct ParseFloatError<T>(pub ParseError, PhantomData<T>);
+
+impl<T> ParseFloatError<T> {
+    pub fn into_inner(self) -> ParseError {
+        self.0
+    }
+}
+
+impl<T> From<ParseError> for ParseFloatError<T> {
+    fn from(x: ParseError) -> Self {
+        Self(x, Default::default())
+    }
+}
+
+impl<T> core::fmt::Display for ParseFloatError<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Parse a 32-bit float.
+///
+/// ```rust
+/// use bytemuck_parsing::parse_f32;
+///
+/// let i = [(42.0f32).to_bits().to_le_bytes().as_slice(), &[0x03, 0x7]].concat();
+/// let mut i = i.as_slice();
+/// let o = parse_f32(&mut i);
+/// assert_eq!(o, Ok(42.0));
+/// assert_eq!(i, &[0x03, 0x7])
+/// ```
+pub fn parse_f32(input: &mut &[u8]) -> Result<f32, ParseError> {
+    let int: u32 = parse(input)?;
+    let float = f32::from_bits(int);
+    Ok(float)
+}
+
+/// Parse a 32-bit float.
+///
+/// ```rust
+/// use bytemuck_parsing::parse_f64;
+///
+/// let i = [(42.0f64).to_bits().to_le_bytes().as_slice(), &[0x03, 0x7]].concat();
+/// let mut i = i.as_slice();
+/// let o = parse_f64(&mut i);
+/// assert_eq!(o, Ok(42.0));
+/// assert_eq!(i, &[0x03, 0x7])
+/// ```
+pub fn parse_f64(input: &mut &[u8]) -> Result<f64, ParseError> {
+    let int: u64 = parse(input)?;
+    let float = f64::from_bits(int);
+    Ok(float)
 }

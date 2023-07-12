@@ -4,7 +4,12 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 readme = "readme.md"
-description = "Helpers for parsing with bytemuck and core."
+description = "Helpers to parse plain-old-data with `bytemuck` and `core`"
 
 [dependencies]
 bytemuck = "1.13"
+
+[dependencies.derive_more]
+version = "0.99.17"
+default-features = false
+features = ["from", "display"]
