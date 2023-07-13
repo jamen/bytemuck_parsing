@@ -1,3 +1,7 @@
+//! # bytemuck_parsing
+//!
+//! Helpers to parse plain-old-data with `bytemuck` and `core`
+
 #![no_std]
 
 use bytemuck::{AnyBitPattern, PodCastError};
@@ -5,8 +9,9 @@ use core::str::Utf8Error;
 use core::{marker::PhantomData, mem::size_of};
 use derive_more::{Display, From};
 
+/// The input ended.
 #[derive(Debug, Display, PartialEq, Eq, Copy, Clone)]
-#[display(fmt = "input ended unexpectedly")]
+#[display(fmt = "input ended")]
 pub struct InputEndedError;
 
 /// Removes and returns items from the beginning of a slice.
@@ -33,6 +38,8 @@ pub fn take<'a, T>(input: &mut &'a [T], n: usize) -> Result<&'a [T], InputEndedE
     Ok(front)
 }
 
+/// Failed to take bytes as a string. The input may have ended prematurely, or the bytes were not
+/// valid UTF-8.
 #[derive(Display, Debug, From, Copy, Clone, PartialEq, Eq)]
 pub enum TakeStrWithLenError {
     InputEnded(InputEndedError),
@@ -58,6 +65,8 @@ pub fn take_str_with_len<'a>(
     Ok(string)
 }
 
+/// Failed to parse. The input may have ended prematurely, or it couldn't be cast into the type for
+/// some other reason. See [`bytemuck::PodCastError`] for more info.
 #[derive(Display, Debug, From, Copy, Clone, PartialEq, Eq)]
 pub enum ParseError {
     InputEnded(InputEndedError),
@@ -96,6 +105,7 @@ pub fn parse<T: AnyBitPattern>(input: &mut &[u8]) -> Result<T, ParseError> {
     Ok(data_type)
 }
 
+/// Failed to parse input as integer. See [`ParseError`] for more info.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct ParseIntError<T>(ParseError, PhantomData<T>);
 
@@ -341,6 +351,7 @@ impl_int_parsers! {
     pub fn parse_i128_be { i128, to_be };
 }
 
+/// Failed to parse input as float. See [`ParseError`] for more info.
 pub struct ParseFloatError<T>(pub ParseError, PhantomData<T>);
 
 impl<T> ParseFloatError<T> {
