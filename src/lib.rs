@@ -352,6 +352,7 @@ impl_int_parsers! {
 }
 
 /// Failed to parse input as float. See [`ParseError`] for more info.
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct ParseFloatError<T>(pub ParseError, PhantomData<T>);
 
 impl<T> ParseFloatError<T> {
