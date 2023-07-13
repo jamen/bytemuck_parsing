@@ -5,6 +5,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 readme = "readme.md"
 description = "Helpers to parse plain-old-data with `bytemuck` and `core`"
+repository = "https://github.com/jamen/bytemuck_parsing"
 
 [dependencies]
 bytemuck = "1.13"
