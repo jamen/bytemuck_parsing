@@ -372,7 +372,7 @@ impl<T> core::fmt::Display for ParseFloatError<T> {
 /// assert_eq!(o, Ok(42.0));
 /// assert_eq!(i, &[0x03, 0x7])
 /// ```
-pub fn parse_f32(input: &mut &[u8]) -> Result<f32, ParseError> {
+pub fn parse_f32(input: &mut &[u8]) -> Result<f32, ParseFloatError<f32>> {
     let int: u32 = parse(input)?;
     let float = f32::from_bits(int);
     Ok(float)
@@ -389,7 +389,7 @@ pub fn parse_f32(input: &mut &[u8]) -> Result<f32, ParseError> {
 /// assert_eq!(o, Ok(42.0));
 /// assert_eq!(i, &[0x03, 0x7])
 /// ```
-pub fn parse_f64(input: &mut &[u8]) -> Result<f64, ParseError> {
+pub fn parse_f64(input: &mut &[u8]) -> Result<f64, ParseFloatError<f64>> {
     let int: u64 = parse(input)?;
     let float = f64::from_bits(int);
     Ok(float)
